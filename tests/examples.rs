@@ -22,7 +22,7 @@ fn runs_kosul_example() {
 
 #[test]
 fn runs_fonksiyon_example() {
-    assert_example_output(include_str!("../examples/fonksiyon.ana"), "25");
+    assert_example_output(include_str!("../examples/fonksiyon.ana"), "120");
 }
 
 #[test]

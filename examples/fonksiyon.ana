@@ -1,12 +1,11 @@
-Kare(x: sayı) -> sayı {
-    dön x * x;
-}
+Faktoriyel(n: sayı) -> sayı {
+    eğer (n == 0) {
+        dön 1;
+    }
 
-Topla(a: sayı, b: sayı) -> sayı {
-    dön a + b;
+    dön n * Faktoriyel(n - 1);
 }
 
 Ana() {
-    sonuc: sayı = Topla(Kare(3), Kare(4));
-    yazdır(sonuc);
+    yazdır(Faktoriyel(5));
 }

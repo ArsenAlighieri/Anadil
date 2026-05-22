@@ -361,3 +361,26 @@ Sonuc: temiz.
 
 Karar: V0.2 dinamik metin + RC temel stabilizasyonu olarak kapatilacak.
 Dizi/yapi V0.3/ayri faza, last-use optimizasyonu V0.2.1'e tasindi.
+
+## V0.3 Stabilizasyon Kapisi
+
+V0.3'un hedefi dynamic/heterogeneous `dizi` MVP'sidir.
+
+- [x] `dizi` tipi, `{...}` literal syntax'i ve bos dizi literal'i eklendi.
+- [x] `a[0]` index okuma ve `a[0] = deger` index assignment eklendi.
+- [x] `uzunluk(dizi)` interpreter, sema ve native backend'de calisir.
+- [x] Native runtime dizi allocation/get/set/bounds helper'lari eklendi.
+- [x] Dizi elemanlari runtime tag/payload modeliyle heterojen tutulur.
+- [x] Metin ve dizi elemanlari icin RC retain/release runtime tarafinda
+  korunur.
+- [x] Interpreter dizi semantigi native referans/paylasim modeliyle
+  hizalandi.
+- [x] Native edge testleri bos dizi, overwrite, negatif index, out-of-range
+  index, dizi parametre, dizi return, local sharing ve nested assignment
+  senaryolarini kapsar.
+
+Kalan V0.3 kapisi:
+
+- [ ] Full `cargo test`.
+- [ ] Release package smoke.
+- [ ] Fork uzerinden `v0.3.0-rc.1` yayin testi.

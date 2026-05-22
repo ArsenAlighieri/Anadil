@@ -2,7 +2,7 @@
 
 ## Hemen Sonraki Adim
 
-- V0.3 dizi MVP icin syntax ve kapsam kararlarini ver.
+- V0.3 RC kapisini calistir: full test, package smoke ve fork release.
 
 ## Sonraki Native Compiler Sprinti
 
@@ -10,7 +10,7 @@
 2. ~~Cache invalidation icin runtime asm timestamp kontrolu yap.~~
 3. ~~Link hattini cached runtime objesiyle calistir ve mevcut native testleri koru.~~
 4. ~~V0.1 compiler tamam kriterlerini yaz.~~ (project_status.md `V0.1 Tamam Kriterleri`)
-5. Runtime library yeterince sabitlenince paketleme modelini degerlendir.
+5. ~~Runtime library yeterince sabitlenince paketleme modelini degerlendir.~~
 
 ## Native IDE
 
@@ -31,6 +31,8 @@ ek testler:
 - [x] Recursive fonksiyon icin interpreter+native parity ornegi.
 - [x] 6 parametreli fonksiyon icin interpreter+native parity ornegi.
 - [x] `mantik` esitlik ve esitsizlik (`==`, `!=`) icin sema karari ve testi.
+- [x] V0.3 dizi edge coverage: bos dizi, overwrite, negatif/out-of-range index,
+      dizi parametre, dizi return ve local sharing.
 
 V0.2 baslangicinda P1 test borcu kapatildi: sema diagnostic ornekleri,
 eksik dosya CLI diagnostic'i ve ic ice dongu native parity testi eklendi.
@@ -73,12 +75,15 @@ Kalan P2 bosluklar `Docs/test_gap_analizi.md` altinda izlenir.
 - [x] V0.2 stabilizasyon kapisindaki kalan karar maddelerini kapat.
 - [x] Last-use optimizasyonu icin go/no-go karari ver. (V0.2.1'e ertelendi)
 - [x] Dizi/yapi MVP kapsam kararini V0.2 disi/faz ici olarak netlestir. (V0.3/ayri faz)
+- [x] V0.3 `dizi` literal, index read, index assignment ve `uzunluk(dizi)` native backend destegini ekle.
+- [x] V0.3 dizi runtime helper'larini ve RC entegrasyonunu ekle.
+- [x] Interpreter dizi semantigini native referans/paylasim modeline hizala.
 
 ## Dil Tasarimi
 
 - [ ] Turkce karakterli ana builtin yazimi ve `yazdir` ASCII alias kararini dokumanlarda tutarli tut.
-- [ ] Dizi/yapi/modul icin MVP kapsam kararini yaz.
-- [ ] V0.3 dizi syntax kararini `Docs/v0.3_roadmap.md` uzerinden netlestir.
+- [x] Dizi/yapi/modul icin MVP kapsam kararini yaz.
+- [x] V0.3 dizi syntax kararini `Docs/v0.3_roadmap.md` uzerinden netlestir.
 - [x] Memory management modelini kisa tasarim notuna dok.
 
 ## Sonra

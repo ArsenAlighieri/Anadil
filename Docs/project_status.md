@@ -15,7 +15,7 @@ Compiler tarafinda tercih edilen yon:
 
 ```text
 .ana kaynak
--> lexer / parser / semantic analiz / typed AST
+-> lexer / parser / semantic analiz / typed AST / typed AST optimizer / IR taslagi
 -> Windows x64 MASM assembly
 -> program.obj
 + Anadil runtime library
@@ -47,6 +47,43 @@ dogrulama/debug araci olarak tutulur.
 - `.ana -> assembly -> obj -> exe` hatti calisir durumda.
 - Native backend `src/native.rs` icinde typed AST'den Windows x64 MASM
   assembly uretiyor.
+- V0.2 branch'inde typed AST optimizer ve okunabilir `anadil ir`
+  ara temsil komutu eklendi; native backend henuz typed AST hattindan
+  calismaya devam ediyor.
+- IR cikti katmani runtime operasyonlarini acik isimlerle gosteriyor
+  (`runtime.yazdir_metin`, `runtime.metin_esit` vb.).
+- Runtime'a V0.2 heap primitive stub'lari (`tahsis`, `paylas`, `birak`)
+  eklendi; compiler henuz bunlari kullanmiyor.
+- Length-prefixed `metin` nesnesi icin runtime ABI helper'lari eklendi;
+  native backend static metin literal yazdirma ve karsilastirma icin bu
+  helper'lari kullanir.
+- Native string literal emit'i tek `NativeStringLiteral` soyutlamasinda
+  toplandi ve static literal layout'u `[refcount][tip_id][len][bytes]`
+  bicimine tasindi.
+- `metin + metin` MVP olarak eklendi; runtime heap'te yeni length-prefixed
+  metin uretir.
+- `uzunluk(metin) -> sayi` builtin'i interpreter, IR ve native backend'de
+  desteklenir; native backend length-prefixed runtime helper'ini kullanir.
+- `examples/metin_v02.ana` V0.2 dinamik metin, `uzunluk`, function return
+  ve RC cleanup senaryolarini gosterir.
+- Nested concat ve user-defined fonksiyon return operandlari concat sonrasi
+  `birak` edilir.
+- `yazdir` owned temporary argumanlari ve kullanilmayan owned expression
+  sonuclari caller tarafinda `birak` edilir.
+- Ilk RC cleanup emit'i eklendi: void fonksiyonlarin ust seviye `metin`
+  local'leri fonksiyon cikisinda `anadil_runtime_birak` ile birakilir.
+- `metin` assignment replacement icin owned/static RHS durumunda eski slot
+  degeri guvenli sekilde `birak` ile temizlenir.
+- Local `metin` paylasimi icin var decl ve assignment sirasinda
+  `anadil_runtime_paylas` emit edilir.
+- User-defined fonksiyonlara local `metin` argumani gecilirken caller
+  `paylas` eder; void callee `metin` parametrelerini cikista `birak` eder.
+- `metin` return degerleri cleanup boyunca korunur; local `metin` return
+  edilirken caller referansi icin `paylas` emit edilir.
+- If/else branch'lerinin normal cikisinda branch-scope `metin` local'leri
+  `birak` edilir.
+- Loop body `metin` local'leri normal iterasyon sonu, `devam` ve `kır`
+  akislarinda `birak` edilir.
 - Program entrypoint'i `Ana()` olarak kabul ediliyor.
 - Fonksiyon cagirma, stack argument gecisi ve nested call senaryolari test
   altinda.
@@ -216,8 +253,8 @@ islerle ortusur.
 ### CLI ve diagnostics
 
 - [x] CLI komut yuzeyi sabit: `calistir`, `yorumla`, `kontrol`, `ast`,
-  `typed`, `asm`, `asm-yaz`, `derle`, `ide`, `ornekler`, `surum`, `yardim`,
-  `repl`.
+  `typed`, `ir`, `asm`, `asm-yaz`, `derle`, `ide`, `ornekler`, `surum`,
+  `yardim`, `repl`.
 - [x] `kontrol --json`, `calistir --json` ve `derle --json` IDE/araclar icin
   kararli diagnostic semasi uretiyor. `yorumla --json` gecici
   interpreter/test protokolu olarak kalir.
@@ -275,7 +312,7 @@ Anadil V0.1 = lokal IDE + native Windows executable compiler
 Orta vadede hedef:
 
 ```text
-Anadil V0.2 = heap modeli + RC runtime + dinamik metin + dizi/yapi temeli
+Anadil V0.2 = heap modeli + RC runtime + dinamik metin + metin API temeli
 ```
 
 Daha uzun vadede hedef:
@@ -291,3 +328,59 @@ Bu yolda su prensipler korunacak:
 - IDE polish'i compiler kararliligindan sonra yapmak.
 - C'ye donmeden native toolchain modelini buyutmek.
 - V0.1 kapsam disini net soylemek, V0.2+ yolunu ise tasarimla hazirlamak.
+
+## V0.2 Stabilizasyon Kapisi
+
+V0.2'yi main'e tasimadan once hedeflenen durum:
+
+- [x] Dinamik `metin + metin` native/interpreter parity ile calisir.
+- [x] Length-prefixed static ve heap `metin` layout'u runtime helper'lariyla
+  tek model gibi kullanilir.
+- [x] `uzunluk(metin) -> sayi` interpreter, IR ve native backend'de calisir.
+- [x] RC cleanup icin function scope, branch scope, loop scope, return,
+  function arg, builtin arg, unused expression ve nested concat akislari
+  testlidir.
+- [x] `Docs/native_compiler.md` icinde RC audit checklist'i ve bilinen
+  sinirlar yazilidir.
+- [x] `examples/metin_v02.ana` kullaniciya gorunur V0.2 metin demosu verir.
+- [x] Last-use optimizasyonu MVP karari: V0.2.1'e ertelendi.
+- [x] Dizi/yapi MVP kapsam karari: V0.3/ayri faz olarak tutulacak.
+- [x] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` ve
+  `cargo test` temiz kosum sonucu release/merge notuna yazildi.
+
+Son stabilizasyon kosumu:
+
+```text
+2026-05-12:
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+
+Sonuc: temiz.
+```
+
+Karar: V0.2 dinamik metin + RC temel stabilizasyonu olarak kapatilacak.
+Dizi/yapi V0.3/ayri faza, last-use optimizasyonu V0.2.1'e tasindi.
+
+## V0.3 Stabilizasyon Kapisi
+
+V0.3'un hedefi dynamic/heterogeneous `dizi` MVP'sidir.
+
+- [x] `dizi` tipi, `{...}` literal syntax'i ve bos dizi literal'i eklendi.
+- [x] `a[0]` index okuma ve `a[0] = deger` index assignment eklendi.
+- [x] `uzunluk(dizi)` interpreter, sema ve native backend'de calisir.
+- [x] Native runtime dizi allocation/get/set/bounds helper'lari eklendi.
+- [x] Dizi elemanlari runtime tag/payload modeliyle heterojen tutulur.
+- [x] Metin ve dizi elemanlari icin RC retain/release runtime tarafinda
+  korunur.
+- [x] Interpreter dizi semantigi native referans/paylasim modeliyle
+  hizalandi.
+- [x] Native edge testleri bos dizi, overwrite, negatif index, out-of-range
+  index, dizi parametre, dizi return, local sharing ve nested assignment
+  senaryolarini kapsar.
+
+Kalan V0.3 kapisi:
+
+- [ ] Full `cargo test`.
+- [ ] Release package smoke.
+- [ ] Fork uzerinden `v0.3.0-rc.1` yayin testi.

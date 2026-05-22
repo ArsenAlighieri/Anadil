@@ -34,6 +34,193 @@ Ana() {\n\
 }
 
 #[test]
+fn native_string_concat_matches_interpreter() {
+    assert_native_output(
+        "string_concat",
+        "\
+Ana() {\n\
+    mesaj: metin = \"Merhaba\" + \" \" + \"Anadil\";\n\
+    bos: metin = \"\" + \"\";\n\
+    yazdir(mesaj);\n\
+    yazdir(bos == \"\");\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_string_length_matches_interpreter() {
+    assert_native_output(
+        "string_length",
+        "\
+Uret() -> metin {\n\
+    d\u{00f6}n \"Yerel\" + \" Derleyici\";\n\
+}\n\
+\n\
+Ana() {\n\
+    mesaj: metin = \"Merhaba\";\n\
+    yazdir(uzunluk(\"Merhaba\"));\n\
+    yazdir(uzunluk(\"\"));\n\
+    yazdir(uzunluk(mesaj));\n\
+    yazdir(uzunluk(\"A\" + \"B\"));\n\
+    yazdir(uzunluk(Uret()));\n\
+    yazdir(uzunluk(mesaj) == 7);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_chained_string_concat_matches_interpreter() {
+    assert_native_output(
+        "string_concat_chained",
+        "\
+Uret() -> metin {\n\
+    d\u{00f6}n \" C\" + \" D\";\n\
+}\n\
+\n\
+Ana() {\n\
+    mesaj: metin = \"A\" + \" B\" + Uret();\n\
+    yazdir(mesaj);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_owned_string_expression_cleanup_matches_interpreter() {
+    assert_native_output(
+        "owned_string_expression_cleanup",
+        "\
+Uret() -> metin {\n\
+    d\u{00f6}n \"C\" + \"D\";\n\
+}\n\
+\n\
+Ana() {\n\
+    yazdir(\"A\" + \"B\");\n\
+    Uret();\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_string_assignment_replacement_matches_interpreter() {
+    assert_native_output(
+        "string_assignment_replace",
+        "\
+Ana() {\n\
+    mesaj: metin = \"Eski\";\n\
+    mesaj = \"Yeni\" + \" Deger\";\n\
+    yazdir(mesaj);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_string_local_sharing_matches_interpreter() {
+    assert_native_output(
+        "string_local_share",
+        "\
+Ana() {\n\
+    a: metin = \"Merhaba\" + \"!\";\n\
+    b: metin = a;\n\
+    b = a;\n\
+    yazdir(a);\n\
+    yazdir(b);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_string_parameter_retain_matches_interpreter() {
+    assert_native_output(
+        "string_param_retain",
+        "\
+Selamla(ad: metin) {\n\
+    yazdir(ad);\n\
+}\n\
+\n\
+Ana() {\n\
+    mesaj: metin = \"Merhaba\" + \"!\";\n\
+    Selamla(mesaj);\n\
+    yazdir(mesaj);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_inline_owned_string_arguments_match_interpreter() {
+    assert_native_output(
+        "inline_owned_string_args",
+        "\
+Selamla(ad: metin) {\n\
+    yazdir(ad);\n\
+}\n\
+\n\
+Uret() -> metin {\n\
+    d\u{00f6}n \"U\" + \"ret\";\n\
+}\n\
+\n\
+Ana() {\n\
+    Selamla(\"Merhaba\" + \"!\");\n\
+    Selamla(Uret());\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_string_return_ownership_matches_interpreter() {
+    assert_native_output(
+        "string_return_ownership",
+        "\
+Uret() -> metin {\n\
+    sonuc: metin = \"Merhaba\" + \"!\";\n\
+    d\u{00f6}n sonuc;\n\
+}\n\
+\n\
+Ana() {\n\
+    mesaj: metin = Uret();\n\
+    yazdir(mesaj);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_if_branch_string_cleanup_matches_interpreter() {
+    assert_native_output(
+        "if_branch_string_cleanup",
+        "\
+Ana() {\n\
+    kosul: mant\u{0131}k = do\u{011f}ru;\n\
+    e\u{011f}er (kosul) {\n\
+        mesaj: metin = \"Merhaba\" + \"!\";\n\
+        yazdir(mesaj);\n\
+    } de\u{011f}ilse {\n\
+        diger: metin = \"Selam\" + \"!\";\n\
+        yazdir(diger);\n\
+    }\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_loop_string_cleanup_with_break_continue_matches_interpreter() {
+    assert_native_output(
+        "loop_string_cleanup_break_continue",
+        "\
+Ana() {\n\
+    d\u{00f6}ng\u{00fc} (i: say\u{0131} = 0; i < 4; i = i + 1) {\n\
+        mesaj: metin = \"Merhaba\" + \"!\";\n\
+        e\u{011f}er (i == 1) {\n\
+            devam;\n\
+        }\n\
+        e\u{011f}er (i == 3) {\n\
+            k\u{0131}r;\n\
+        }\n\
+        yazdir(mesaj);\n\
+    }\n\
+}\n",
+    );
+}
+
+#[test]
 fn native_void_function_matches_interpreter() {
     assert_native_output(
         "void_function",
@@ -102,6 +289,29 @@ Ana() {\n\
         }\n\
     }\n\
     yazdır(toplam);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_nested_loop_break_scope_matches_interpreter() {
+    assert_native_output(
+        "nested_loop_break_scope",
+        "\
+Ana() {\n\
+    toplam: say\u{0131} = 0;\n\
+    d\u{00f6}ng\u{00fc} (i: say\u{0131} = 0; i < 3; i = i + 1) {\n\
+        d\u{00f6}ng\u{00fc} (j: say\u{0131} = 0; j < 4; j = j + 1) {\n\
+            e\u{011f}er (j == 1) {\n\
+                devam;\n\
+            }\n\
+            e\u{011f}er (j == 3) {\n\
+                k\u{0131}r;\n\
+            }\n\
+            toplam = toplam + i * 10 + j;\n\
+        }\n\
+    }\n\
+    yazdir(toplam);\n\
 }\n",
     );
 }
@@ -235,6 +445,100 @@ Ana() {\n\
 }
 
 #[test]
+fn native_empty_array_literal_matches_interpreter() {
+    assert_native_output(
+        "array_empty_literal",
+        "\
+Ana() {\n\
+    bos: dizi = {};\n\
+    yazdir(uzunluk(bos));\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_array_string_overwrite_matches_interpreter() {
+    assert_native_output(
+        "array_string_overwrite",
+        "\
+Ana() {\n\
+    degerler: dizi = {\"eski\" + \"!\", \"iki\"};\n\
+    yazdir(degerler[0]);\n\
+    degerler[0] = \"yeni\" + \"!\";\n\
+    yazdir(degerler[0]);\n\
+    yazdir(degerler[1]);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_array_local_sharing_matches_interpreter() {
+    assert_native_output(
+        "array_local_sharing",
+        "\
+Ana() {\n\
+    a: dizi = {1, \"iki\"};\n\
+    b: dizi = a;\n\
+    b[0] = \"bir\";\n\
+    yazdir(a[0]);\n\
+    yazdir(b[1]);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_array_parameter_matches_interpreter() {
+    assert_native_output(
+        "array_parameter",
+        "\
+YazdirIlk(degerler: dizi) {\n\
+    yazdir(uzunluk(degerler));\n\
+    yazdir(degerler[0]);\n\
+}\n\
+\n\
+Ana() {\n\
+    degerler: dizi = {\"bir\", 2};\n\
+    YazdirIlk(degerler);\n\
+    yazdir(degerler[1]);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_array_return_matches_interpreter() {
+    assert_native_output(
+        "array_return",
+        "\
+Uret() -> dizi {\n\
+    d\u{00f6}n {1, \"iki\", do\u{011f}ru};\n\
+}\n\
+\n\
+Ana() {\n\
+    degerler: dizi = Uret();\n\
+    yazdir(uzunluk(degerler));\n\
+    yazdir(degerler[0]);\n\
+    yazdir(degerler[1]);\n\
+    yazdir(degerler[2]);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_nested_array_assignment_matches_interpreter() {
+    assert_native_output(
+        "array_nested_assignment",
+        "\
+Ana() {\n\
+    degerler: dizi = {1, 2};\n\
+    degerler[0] = {\"ic\", 7};\n\
+    yazdir(uzunluk(degerler));\n\
+    degerler[0] = \"degisti\";\n\
+    yazdir(degerler[0]);\n\
+}\n",
+    );
+}
+
+#[test]
 fn native_build_handles_spaces_and_turkish_paths() {
     let Some(anadil_bin) = anadil_binary() else {
         eprintln!("native path case skipped: anadil binary path is not available");
@@ -340,6 +644,150 @@ Ana() {\n\
         String::from_utf8_lossy(&run_output.stderr)
     );
     assert!(combined_output.contains("Anadil runtime hatasi: Sifira bolme hatasi"));
+}
+
+#[test]
+fn native_array_index_out_of_range_reports_runtime_error() {
+    let Some(anadil_bin) = anadil_binary() else {
+        eprintln!("native edge case skipped: anadil binary path is not available");
+        return;
+    };
+
+    let source = "\
+Ana() {\n\
+    degerler: dizi = {1, 2, 3};\n\
+    yazdir(degerler[3]);\n\
+}\n";
+
+    let interpreter_error = run_source(source).expect_err("interpreter should reject bad index");
+    assert!(interpreter_error.contains("aralik"));
+
+    let compile_output =
+        compile_source_with_native(&anadil_bin, "array_index_out_of_range", source);
+    if !compile_output.status.success() && native_toolchain_missing(&compile_output) {
+        eprintln!("native edge case skipped: Visual Studio native toolchain is not available");
+        return;
+    }
+
+    assert!(
+        compile_output.status.success(),
+        "native compile failed for array_index_out_of_range\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&compile_output.stdout),
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let exe_path = edge_case_path("array_index_out_of_range").with_extension("exe");
+    let run_output = Command::new(&exe_path)
+        .output()
+        .expect("native executable should run");
+
+    assert!(
+        !run_output.status.success(),
+        "native executable should fail for array_index_out_of_range"
+    );
+
+    let combined_output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+    assert!(combined_output.contains("Anadil runtime hatasi: Dizi index'i aralik disinda"));
+}
+
+#[test]
+fn native_array_negative_index_reports_runtime_error() {
+    let Some(anadil_bin) = anadil_binary() else {
+        eprintln!("native edge case skipped: anadil binary path is not available");
+        return;
+    };
+
+    let source = "\
+Ana() {\n\
+    degerler: dizi = {1, 2, 3};\n\
+    indeks: say\u{0131} = -1;\n\
+    yazdir(degerler[indeks]);\n\
+}\n";
+
+    let interpreter_error = run_source(source).expect_err("interpreter should reject bad index");
+    assert!(interpreter_error.contains("negatif"));
+
+    let compile_output = compile_source_with_native(&anadil_bin, "array_negative_index", source);
+    if !compile_output.status.success() && native_toolchain_missing(&compile_output) {
+        eprintln!("native edge case skipped: Visual Studio native toolchain is not available");
+        return;
+    }
+
+    assert!(
+        compile_output.status.success(),
+        "native compile failed for array_negative_index\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&compile_output.stdout),
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let exe_path = edge_case_path("array_negative_index").with_extension("exe");
+    let run_output = Command::new(&exe_path)
+        .output()
+        .expect("native executable should run");
+
+    assert!(
+        !run_output.status.success(),
+        "native executable should fail for array_negative_index"
+    );
+
+    let combined_output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+    assert!(combined_output.contains("Anadil runtime hatasi: Dizi index'i aralik disinda"));
+}
+
+#[test]
+fn native_array_assignment_out_of_range_reports_runtime_error() {
+    let Some(anadil_bin) = anadil_binary() else {
+        eprintln!("native edge case skipped: anadil binary path is not available");
+        return;
+    };
+
+    let source = "\
+Ana() {\n\
+    degerler: dizi = {1, 2};\n\
+    degerler[2] = \"uc\";\n\
+}\n";
+
+    let interpreter_error = run_source(source).expect_err("interpreter should reject bad index");
+    assert!(interpreter_error.contains("aralik"));
+
+    let compile_output =
+        compile_source_with_native(&anadil_bin, "array_assignment_out_of_range", source);
+    if !compile_output.status.success() && native_toolchain_missing(&compile_output) {
+        eprintln!("native edge case skipped: Visual Studio native toolchain is not available");
+        return;
+    }
+
+    assert!(
+        compile_output.status.success(),
+        "native compile failed for array_assignment_out_of_range\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&compile_output.stdout),
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let exe_path = edge_case_path("array_assignment_out_of_range").with_extension("exe");
+    let run_output = Command::new(&exe_path)
+        .output()
+        .expect("native executable should run");
+
+    assert!(
+        !run_output.status.success(),
+        "native executable should fail for array_assignment_out_of_range"
+    );
+
+    let combined_output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+    assert!(combined_output.contains("Anadil runtime hatasi: Dizi index'i aralik disinda"));
 }
 
 fn assert_native_output(name: &str, source: &str) {

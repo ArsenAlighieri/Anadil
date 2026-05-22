@@ -130,6 +130,10 @@ impl Parser {
                 self.bump();
                 Ok(Type::Metin)
             }
+            TokenKind::Dizi => {
+                self.bump();
+                Ok(Type::Dizi)
+            }
             _ => Err(ParseError::expected(
                 "bir tip (`sayı` veya `mantık`)",
                 self.current(),
@@ -353,12 +357,23 @@ impl Parser {
 
     fn parse_assignment(&mut self) -> Result<AssignStmt, ParseError> {
         let (target, span) = self.expect_ident()?;
+        let index = if self
+            .consume_if(|kind| matches!(kind, TokenKind::LBracket))
+            .is_some()
+        {
+            let index = self.parse_expression()?;
+            self.expect_token("`]`", |kind| matches!(kind, TokenKind::RBracket))?;
+            Some(Box::new(index))
+        } else {
+            None
+        };
         self.expect_token("`=`", |kind| matches!(kind, TokenKind::Assign))?;
         let value = self.parse_expression()?;
 
         Ok(AssignStmt {
             span,
             target,
+            index,
             value,
         })
     }
@@ -541,7 +556,29 @@ impl Parser {
             ));
         }
 
-        self.parse_primary()
+        self.parse_postfix()
+    }
+
+    fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_primary()?;
+
+        while self
+            .consume_if(|kind| matches!(kind, TokenKind::LBracket))
+            .is_some()
+        {
+            let span = expr.span;
+            let index = self.parse_expression()?;
+            self.expect_token("`]`", |kind| matches!(kind, TokenKind::RBracket))?;
+            expr = Expr::new(
+                span,
+                ExprKind::Index {
+                    target: Box::new(expr),
+                    index: Box::new(index),
+                },
+            );
+        }
+
+        Ok(expr)
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
@@ -583,8 +620,33 @@ impl Parser {
                 self.expect_token("`)`", |kind| matches!(kind, TokenKind::RParen))?;
                 Ok(expr)
             }
+            TokenKind::LBrace => self.parse_array_literal(),
             _ => Err(ParseError::expected("bir ifade", self.current())),
         }
+    }
+
+    fn parse_array_literal(&mut self) -> Result<Expr, ParseError> {
+        let lbrace = self.expect_token("`{`", |kind| matches!(kind, TokenKind::LBrace))?;
+        let mut elements = Vec::new();
+
+        if self.check(|kind| matches!(kind, TokenKind::RBrace)) {
+            self.bump();
+            return Ok(Expr::new(lbrace.span(), ExprKind::Array(elements)));
+        }
+
+        loop {
+            elements.push(self.parse_expression()?);
+
+            if self
+                .consume_if(|kind| matches!(kind, TokenKind::Comma))
+                .is_none()
+            {
+                break;
+            }
+        }
+
+        self.expect_token("`}`", |kind| matches!(kind, TokenKind::RBrace))?;
+        Ok(Expr::new(lbrace.span(), ExprKind::Array(elements)))
     }
 
     fn parse_arguments(&mut self) -> Result<Vec<Expr>, ParseError> {
@@ -689,7 +751,7 @@ impl Parser {
 
     fn is_assignment_start(&self) -> bool {
         matches!(&self.current().kind, TokenKind::Ident(_))
-            && matches!(self.peek_kind(), Some(kind) if matches!(kind, TokenKind::Assign))
+            && matches!(self.peek_kind(), Some(kind) if matches!(kind, TokenKind::Assign | TokenKind::LBracket))
     }
 
     fn has_top_level_semicolon_before_rparen(&self) -> bool {

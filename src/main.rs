@@ -29,8 +29,8 @@ fn hide_command_window(command: &mut process::Command) {
 mod ide;
 
 use anadil::{
-    check_source, compile_source, diagnostics::Diagnostic, emit_native_asm_source, parse_source,
-    run_source, run_source_diagnostic,
+    check_source, compile_source, diagnostics::Diagnostic, emit_ir_source, emit_native_asm_source,
+    parse_source, run_source, run_source_diagnostic,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +40,7 @@ enum Command {
     Check,
     Ast,
     Typed,
+    Ir,
     Asm,
     WriteAsm,
     CompileNative,
@@ -189,6 +190,7 @@ fn parse_command(command: &str) -> Result<Command, String> {
         "kontrol" | "check" => Ok(Command::Check),
         "ast" => Ok(Command::Ast),
         "typed" => Ok(Command::Typed),
+        "ir" => Ok(Command::Ir),
         "asm" | "native-asm" => Ok(Command::Asm),
         "asm-yaz" | "asm-write" => Ok(Command::WriteAsm),
         "derle" | "native" | "native-compile" => Ok(Command::CompileNative),
@@ -210,6 +212,7 @@ impl Command {
                 | Self::Check
                 | Self::Ast
                 | Self::Typed
+                | Self::Ir
                 | Self::Asm
                 | Self::WriteAsm
                 | Self::CompileNative
@@ -223,6 +226,7 @@ impl Command {
             Self::Check => "kontrol",
             Self::Ast => "ast",
             Self::Typed => "typed",
+            Self::Ir => "ir",
             Self::Asm => "asm",
             Self::WriteAsm => "asm-yaz",
             Self::CompileNative => "derle",
@@ -244,7 +248,7 @@ impl Command {
 
 fn usage(program: &str) -> String {
     format!(
-        "Anadil {}\n\nKullanim:\n  {program} <dosya.ana>\n  {program} calistir <dosya.ana>\n  {program} calistir --json <dosya.ana>\n  {program} yorumla <dosya.ana>\n  {program} yorumla --json <dosya.ana>\n  {program} kontrol <dosya.ana>\n  {program} kontrol --json <dosya.ana>\n  {program} ast <dosya.ana>\n  {program} typed <dosya.ana>\n  {program} asm <dosya.ana>\n  {program} asm-yaz <dosya.ana>\n  {program} derle <dosya.ana>\n  {program} derle --json <dosya.ana>\n  {program} ide\n  {program} repl\n  {program} ornekler\n  {program} surum\n  {program} yardim",
+        "Anadil {}\n\nKullanim:\n  {program} <dosya.ana>\n  {program} calistir <dosya.ana>\n  {program} calistir --json <dosya.ana>\n  {program} yorumla <dosya.ana>\n  {program} yorumla --json <dosya.ana>\n  {program} kontrol <dosya.ana>\n  {program} kontrol --json <dosya.ana>\n  {program} ast <dosya.ana>\n  {program} typed <dosya.ana>\n  {program} ir <dosya.ana>\n  {program} asm <dosya.ana>\n  {program} asm-yaz <dosya.ana>\n  {program} derle <dosya.ana>\n  {program} derle --json <dosya.ana>\n  {program} ide\n  {program} repl\n  {program} ornekler\n  {program} surum\n  {program} yardim",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -266,6 +270,7 @@ fn run_standalone_command(command: Command, program: &str) {
         | Command::Check
         | Command::Ast
         | Command::Typed
+        | Command::Ir
         | Command::Asm
         | Command::WriteAsm
         | Command::CompileNative => unreachable!(),
@@ -349,6 +354,10 @@ fn run_command(
         Command::Typed => {
             let program = compile_source(source)?;
             println!("{program:#?}");
+            Ok(())
+        }
+        Command::Ir => {
+            println!("{}", emit_ir_source(source)?);
             Ok(())
         }
         Command::Asm => {
@@ -1315,7 +1324,11 @@ fn looks_like_entry_program(input: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::PathBuf};
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use super::{
         packaged_runtime_lib_path_from_exe, parse_args, runtime_lib_needs_rebuild,
@@ -1346,10 +1359,21 @@ mod tests {
         assert_eq!(sanitize_build_name("çalışma-1"), "_al__ma-1");
     }
 
+    fn unique_runtime_cache_test_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after UNIX_EPOCH")
+            .as_nanos();
+        let dir = PathBuf::from("target")
+            .join("runtime_cache_unit_tests")
+            .join(format!("{name}_{}_{}", std::process::id(), nanos));
+        fs::create_dir_all(&dir).expect("test cache dir should be created");
+        dir
+    }
+
     #[test]
     fn runtime_obj_cache_rebuilds_when_obj_is_missing() {
-        let dir = PathBuf::from("target").join("runtime_cache_unit_tests");
-        fs::create_dir_all(&dir).expect("test cache dir should be created");
+        let dir = unique_runtime_cache_test_dir("obj_missing");
         let runtime_asm = dir.join("anadil_runtime.asm");
         let runtime_obj = dir.join("anadil_runtime.obj");
         fs::write(&runtime_asm, "; test runtime").expect("runtime asm should be written");
@@ -1361,8 +1385,7 @@ mod tests {
 
     #[test]
     fn runtime_lib_cache_rebuilds_when_lib_is_missing() {
-        let dir = PathBuf::from("target").join("runtime_cache_unit_tests");
-        fs::create_dir_all(&dir).expect("test cache dir should be created");
+        let dir = unique_runtime_cache_test_dir("lib_missing");
         let runtime_obj = dir.join("anadil_runtime.obj");
         let runtime_lib = dir.join("anadil_runtime.lib");
         fs::write(&runtime_obj, "test object placeholder").expect("runtime obj should be written");
@@ -1500,6 +1523,27 @@ mod tests {
         assert!(matches!(command, Command::CompileNative));
         assert_eq!(path, "examples/topla.ana");
         assert_eq!(output, super::OutputFormat::Json);
+    }
+
+    #[test]
+    fn accepts_ir_form() {
+        let args = vec![
+            "anadil".to_string(),
+            "ir".to_string(),
+            "examples/topla.ana".to_string(),
+        ];
+        let ParsedArgs::WithFile {
+            command,
+            path,
+            output,
+        } = parse_args(&args).expect("args should parse")
+        else {
+            panic!("expected file command");
+        };
+
+        assert!(matches!(command, Command::Ir));
+        assert_eq!(path, "examples/topla.ana");
+        assert_eq!(output, super::OutputFormat::Text);
     }
 
     #[test]

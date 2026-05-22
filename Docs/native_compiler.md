@@ -12,6 +12,7 @@ Native derleme hatti su sekildedir:
   -> Parser
   -> Semantic analiz
   -> Typed AST
+  -> Typed AST optimizer
   -> Windows x64 MASM assembly
   -> ml64 ile .obj
   -> lib ile runtime .lib
@@ -21,9 +22,13 @@ Native derleme hatti su sekildedir:
 Ilgili dosyalar:
 
 - `src/native.rs`: Typed AST'den Windows x64 MASM assembly uretir.
+- `src/optimizer.rs`: Typed AST uzerinde sabit katlama ve basit cebirsel
+  sadelestirme gecisi uygular.
+- `src/ir.rs`: V0.2 ara temsilini typed AST'den dusurur ve okunabilir
+  metin formatiyla yazdirir.
 - `runtime/anadil_runtime.asm`: Anadil runtime helper'larini ayri MASM modulu olarak saglar.
 - `src/lib.rs`: `emit_native_asm_source` API'sini disari acar.
-- `src/main.rs`: `asm`, `asm-yaz` ve `derle` CLI komutlarini calistirir.
+- `src/main.rs`: `ir`, `asm`, `asm-yaz` ve `derle` CLI komutlarini calistirir.
 - `tests/native_examples.rs`: Ornek programlari native executable olarak derler ve interpreter ciktisiyla karsilastirir.
 - `tests/native_edge_cases.rs`: Fonksiyon cagrisi, stack arguman, nested call, karsilastirma ve runtime hata edge case'lerini native/interpreter davranisiyla karsilastirir.
 - `tests/cli_diagnostics.rs`: CLI hata ciktisinin IDE tarafindan okunabilir satir/sutun ve caret bilgisi tasidigini kontrol eder.
@@ -73,6 +78,20 @@ cargo run -- yorumla --json examples\topla.ana
 
 `yorumla --json` runtime hatalarini satir/sutun bilgili `runtime` stage'iyle
 raporlar; bu yol V0.1'de dogrulama/test araci olarak kalir.
+
+V0.2 ara temsilini goruntulemek:
+
+```powershell
+cargo run -- ir examples\topla.ana
+```
+
+Bu komut typed AST optimizer sonrasi programi okunabilir Anadil IR
+formatinda yazar. V0.2'de IR henuz native backend'in girdisi degildir;
+backend switch icin hazirlik ve test yuzeyi olarak tutulur.
+Runtime'a dusen islemler IR'de acik isimlerle gorunur; ornegin
+`yazdir(metin)` -> `runtime.yazdir_metin(...)`, `metin == metin` ->
+`runtime.metin_esit(...)`. Bu, dinamik `metin` migration'i sirasinda
+backend'in hangi runtime ABI'sine baglanacagini gorunur kilar.
 
 Native executable'i IDE entegrasyonu icin JSON build sonucu ile derlemek:
 
@@ -200,7 +219,10 @@ Frame size, local sayisina ve fonksiyon icindeki en genis call'un arguman scratc
 `metin`:
 
 - Su an yalnizca string literal desteklenir.
-- Literal'lar assembly `.data` bolumune null-terminated byte dizisi olarak yazilir.
+- Literal'lar assembly `.data` bolumune statik length-prefixed Anadil metin
+  nesnesi olarak yazilir: `[refcount][tip_id][len][bytes...]`.
+- Literal data pointer'i length alanini gosterir; runtime bytes alanina
+  `ptr + 8` ile ulasir.
 - Runtime'da yeni string allocation yoktur.
 
 Ornek:
@@ -212,7 +234,10 @@ mesaj: metin = "Merhaba";
 Assembly tarafinda:
 
 ```asm
-str_0 db "Merhaba", 0
+str_0_refcount dq 4000000000000000h
+str_0_tip dq 1
+str_0 dq 7
+str_0_bytes db "Merhaba"
 lea rax, str_0
 ```
 
@@ -223,8 +248,8 @@ lea rax, str_0
 Kullanilan formatlar:
 
 ```text
-sayi  -> "%lld\n"
-metin -> "%s\n"
+sayi  -> decimal + newline
+metin -> length-prefixed bytes + newline
 ```
 
 `mantik` degerleri once static metinlere cevrilir:
@@ -236,12 +261,141 @@ false -> "yanlis" UTF-8: yanlış
 
 ## Metin Karsilastirma
 
-`metin == metin` ve `metin != metin` islemleri `anadil_runtime_strcmp` helper'i ile uretilir. Bu helper runtime icinde byte byte karsilastirma yapar; C runtime `strcmp` cagrisi kullanmaz.
+`metin == metin` ve `metin != metin` islemleri `anadil_runtime_metin_esit` helper'i ile uretilir. Bu helper once length alanlarini, sonra byte'lari karsilastirir; C runtime `strcmp` cagrisi kullanmaz.
 
 ```text
-anadil_runtime_strcmp(a, b) == 0 -> esit
-anadil_runtime_strcmp(a, b) != 0 -> esit degil
+anadil_runtime_metin_esit(a, b) != 0 -> esit
+anadil_runtime_metin_esit(a, b) == 0 -> esit degil
 ```
+
+## Metin Birlestirme
+
+V0.2 branch'inde `metin + metin` MVP olarak desteklenir. Native backend
+iki operand'i degerlendirir ve `anadil_runtime_metin_birlestir` helper'ini
+cagirir. Helper `anadil_runtime_tahsis` ile yeni length-prefixed heap metin
+nesnesi olusturur, sol ve sag operand byte'larini arka arkaya kopyalar ve
+yeni data pointer'i dondurur.
+
+Bu ilk dilimden sonra RC cleanup emit'i kademeli olarak genisletildi:
+fonksiyon cikisi, atama replacement, local paylasimi, parametre sahipligi,
+return sahipligi, if/else branch scope cikisi ve loop body scope cikisi
+artik native backend tarafindan ele alinir.
+
+Ilk cleanup dilimi olarak native backend, donus degeri olmayan fonksiyonlarin
+ust seviye `metin` local'leri icin fonksiyon cikisinda
+`anadil_runtime_birak` emit eder. Static literal'lar refcount sentinel'i
+tasidigi icin bu cagri no-op olur; `metin + metin` sonucu heap nesnesi ise
+serbest birakilir.
+
+Bu henuz tam RC degildir: last-use optimizasyonu ve daha karmasik ownership
+indirgemeleri sonraki RC emit fazlarina kalir.
+
+### Metin Ownership Matrisi
+
+Native backend `metin` ifadelerini kodgen sirasinda su dar siniflara ayirir:
+
+| Ifade formu | Ownership sinifi | Kodgen kuralı |
+| --- | --- | --- |
+| `"sabit"` | Static literal | Refcount sentinel tasir; `birak` no-op olur. |
+| `local_metin` | Shared reference | Yeni slot/callee/caller referansi gerekiyorsa `paylas` edilir. |
+| `a + b` | Owned temporary | Sonucu heap nesnesidir; hedefe devredilmezse caller temizler. |
+| `Uret()` -> `metin` | Owned temporary | Return ownership caller'a gecer; hedefe devredilmezse caller temizler. |
+| `sayi`, `mantik`, void | Not string | RC emit edilmez. |
+
+### V0.2 RC Audit Checklist
+
+V0.2 branch'inde su RC akislari testli ve desteklidir:
+
+- [x] Function-scope `metin` local cleanup: fonksiyon cikisinda ters sirayla
+  `birak` edilir.
+- [x] Assignment replacement: target `metin` slot'u owned/static/shared RHS
+  ile guncellenirken eski deger korunmus yeni degerden sonra `birak` edilir.
+- [x] Local sharing: `b: metin = a` ve `b = a` icin `paylas` emit edilir.
+- [x] User-defined function local arg: caller local'i `paylas` eder, callee
+  `metin` parametresini cikista `birak` eder.
+- [x] User-defined function owned arg transfer: inline concat veya `metin`
+  return degeri retain edilmeden callee'ye devredilir ve callee cikisinda
+  `birak` edilir.
+- [x] Return ownership: local `metin` return edilirken caller icin `paylas`
+  edilir; owned concat return retain edilmeden caller'a devredilir.
+- [x] If/else branch scope cleanup: branch sonuna normal akisla ulasilirsa
+  branch-local `metin` degerleri `birak` edilir.
+- [x] Loop body scope cleanup: normal iterasyon sonu, `devam` ve `kır`
+  akislarinda loop body `metin` local'leri temizlenir.
+- [x] Early return cleanup: aktif nested scope'lar temizlendikten sonra
+  fonksiyon epilogue cleanup yoluna atlanir.
+- [x] Builtin owned arg cleanup: `yazdir("A" + "B")` ve
+  `uzunluk("A" + "B")` gibi builtin argumanlarinda owned temporary caller
+  tarafinda temizlenir.
+- [x] Unused owned expression cleanup: `Uret();` ve `"A" + "B";` gibi
+  sonucu kullanilmayan owned expression statement'lari hemen `birak` edilir.
+- [x] Nested concat temporary cleanup: `"A" + "B" + Uret()` gibi zincirlerde
+  ara owned operandlar dis concat sonucundan sonra temizlenir.
+
+Bilinen kalan sinirlar:
+
+- [ ] Last-use optimizasyonu yoktur; guvenli RC icin bazi `paylas`/`birak`
+  cagrilari performans acisindan gereksiz kalabilir.
+- [ ] Dizi/yapi/closure gibi yeni heap referans tipleri henuz yoktur; RC
+  siniflandirmasi su anda `metin` uzerinden uygulanir.
+- [ ] Unicode karakter/grapheme uzunlugu henuz yoktur; `uzunluk(metin)`
+  byte length dondurur.
+- [ ] Cycle handling yoktur; mevcut `metin` tipinde cycle uretilemez, ama
+  ileride `dizi`/`yapi` ile tekrar ele alinmalidir.
+
+Concat ifadesi baska bir concat veya user-defined fonksiyon return degerini
+operand olarak kullaniyorsa, native backend `anadil_runtime_metin_birlestir`
+sonucunu korur ve owned temporary operandlari `anadil_runtime_birak` ile
+temizler. Boylece `"A" + "B" + Uret()` gibi zincirlerde ara heap metinler
+program sonuna kadar tasinmaz.
+
+`yazdir("A" + "B")` gibi builtin cagri argumanlarinda callee param cleanup
+yolu olmadigi icin caller, yazdirma bittikten sonra owned temporary'yi
+`birak` eder. Benzer sekilde `Uret();` veya `"A" + "B";` gibi sonucu
+kullanilmayan owned expression statement'lari da hemen temizlenir.
+
+`uzunluk(metin)` V0.2'de length-prefixed layout'un ilk kullaniciya acik
+builtin'idir. Native backend bunu `anadil_runtime_metin_uzunluk` helper'ina
+dusurur ve `sayi` dondurur. Ilk MVP'de deger runtime nesnesindeki byte length
+alanidir; Unicode grapheme/karakter sayma sonraki metin API katmanina kalir.
+Owned temporary argumanlar sonuc korunduktan sonra caller tarafinda `birak`
+edilir.
+
+Atama tarafinda ilk guvenli daralma eklendi: `metin` local'i literal veya
+`metin + metin` gibi owned/static bir ifadeyle yeniden atanirken eski slot
+degeri yeni deger korunarak `anadil_runtime_birak` ile birakilir.
+`x = y` gibi baska local'den paylas gerektiren assignment'lar henuz tam RC
+kurali bekler; bu durumda compiler ekstra `paylas`/`birak` emit etmez.
+
+Sonraki dar RC adimi olarak local `metin` paylasimi da eklendi:
+`b: metin = a` ve `b = a` durumlarinda RHS local pointer'i
+`anadil_runtime_paylas` ile retain edilir. Assignment formunda yeni referans
+retain edildikten sonra eski target degeri `birak` edilir ve slot yeni
+pointer ile guncellenir. Bu sira self-assignment ve ayni heap objesini
+paylasma durumlarinda refcount'un erken sifira inmesini engeller.
+
+Void fonksiyonlarda `metin` parametreleri de fonksiyon cikisinda
+`anadil_runtime_birak` ile temizlenir. Caller tarafinda local `metin`
+argumani user-defined fonksiyona verilirken `anadil_runtime_paylas` emit
+edilir; boylece caller local'i ve callee parametresi ayni heap nesnesini
+guvenli sekilde paylasir. Inline owned concat argumani retain edilmez,
+callee cikisinda birakilarak sahiplik transferi gibi davranir. Ayni kural
+user-defined fonksiyon return degeri dogrudan baska user-defined fonksiyona
+arguman olarak verildiginde de gecerlidir.
+
+Return value icin epilogue return pointer'ini cleanup oncesi stack slot'unda
+saklar, ref cleanup tamamlandiktan sonra `rax`'a geri yukler. Return edilen
+deger local `metin` ise `paylas` emit edilir; boylece function-scope cleanup
+local'i birakirken caller'a donen referans canli kalir. Owned concat return
+degeri zaten yeni refcount=1 nesne oldugu icin retain edilmeden caller'a
+gecer.
+
+If/else branch'lerinde normal akisla branch sonuna ulasilirse, o branch'in
+ust seviye `metin` local'leri ters sirayla `birak` edilir. Erken `return`
+aktif nested scope'lari temizledikten sonra fonksiyon epilogue'una atlar.
+Loop body scope'u da normal iterasyon sonunda temizlenir; `kır` ve `devam`
+akislarinda yalnizca cikilan loop'un aktif scope'lari temizlenir, dis loop
+scope'lari canli kalir.
 
 ## Runtime Hatalari
 
@@ -259,14 +413,28 @@ Compiler kullanici kodundan dogrudan platform API'si veya C runtime cagrisi uret
 
 ```text
 anadil_runtime_print_sayi(rcx=sayi)
-anadil_runtime_print_metin(rcx=metin_ptr)
+anadil_runtime_print_metin(rcx=cstr_ptr)
+anadil_runtime_print_metin_nesne(rcx=metin_obj_ptr)
 anadil_runtime_print_mantik(rcx=0/1)
 anadil_runtime_strcmp(rcx=left_ptr, rdx=right_ptr) -> eax
+anadil_runtime_metin_uzunluk(rcx=metin_obj_ptr) -> rax
+anadil_runtime_metin_esit(rcx=left_obj_ptr, rdx=right_obj_ptr) -> eax 0/1
+anadil_runtime_metin_birlestir(rcx=left_obj_ptr, rdx=right_obj_ptr) -> rax
+anadil_runtime_tahsis(rcx=data_size, rdx=tip_id) -> rax=data_ptr
+anadil_runtime_paylas(rcx=data_ptr) -> void
+anadil_runtime_birak(rcx=data_ptr) -> void
 anadil_runtime_wait_before_exit()
 anadil_runtime_panic(rcx=message_ptr) -> process exit 1
 ```
 
 Bu helper'lar program assembly'sinden ayri bir cached runtime library olarak linklenir. Runtime I/O, bekleme ve process sonlandirma Windows `kernel32` API'lerine baglidir; C runtime import'u artik native executable link hattinda gerekli degildir.
+V0.2 baslangicinda heap primitive sembolleri de runtime'a eklendi; mevcut
+compiler henuz bu primitive'leri emit etmez, dinamik `metin`/`dizi`/`yapi`
+fazlari icin ABI hazirligi olarak tutulur.
+Length-prefixed `metin` nesnesi icin hazirlanan helper'lar native backend
+tarafindan static literal yazdirma ve karsilastirma icin kullanilir. Eski
+C-string helper'lari runtime'in kendi hata ve `mantik` metinleri icin ic
+uyumluluk yuzeyi olarak kalir.
 
 ## Runtime Library Paketleme
 
@@ -363,12 +531,15 @@ Su an native backend'de heap allocation yoktur.
 Bu nedenle:
 
 - Garbage collector yoktur.
-- Reference counting yoktur.
+- Reference counting helper'lari vardir; compiler yalnizca ilk MVP olarak
+  void fonksiyon ust seviye `metin` local cleanup'i emit eder.
 - Manual `free`/`delete` modeli yoktur.
-- String literal'lar static `.data` bolumunde yasar.
+- String literal'lar static length-prefixed `.data` nesneleri olarak yasar.
 - `sayi`, `mantik` ve local `metin` referanslari stack slot'larda tutulur.
 
-Bu model mevcut V0.1 dil alt kumesi icin yeterlidir. `metin` birlestirme, dizi, struct veya dinamik obje destegi eklendiginde heap modeli gerekecektir.
+Bu model mevcut V0.1 dil alt kumesi icin yeterlidir. V0.2 branch'inde
+`metin + metin` heap allocation kullanmaya basladi; dizi, struct ve
+otomatik RC cleanup icin heap modeli genisletilecektir.
 
 Karar belgesi: [memory_model.md](memory_model.md)
 
@@ -411,9 +582,17 @@ Visual Studio native toolchain bulunamazsa native integration testi kendini skip
 - Sadece Windows x64 hedeflenir.
 - Heap allocation yoktur.
 - Garbage collector yoktur.
-- String literal disinda runtime metin uretimi yoktur.
+- `metin + metin` disinda runtime metin uretimi yoktur.
+- Dinamik metinler icin otomatik `birak` emit'i fonksiyon cikisi, if/loop
+  scope cikisi ve owned/static RHS ile guvenli `metin` assignment replacement
+  icin vardir.
+- Local `metin` paylasimi, user-defined fonksiyona local `metin` arguman
+  gecisi ve local `metin` return degeri icin `paylas` emit edilir.
+- If/else branch ve loop body scope'larindaki `metin` local'leri normal
+  cikista ve ilgili erken akis cikislarinda `birak` edilir.
 - Native runtime hatalari tek satir `Anadil runtime hatasi: ...` formatindadir, ancak henuz kaynak satir/sutun bilgisi tasimaz.
-- Optimizasyon yoktur.
+- Optimizasyon su an yalnizca typed AST uzerinde sabit katlama ve basit
+  cebirsel sadelestirme seviyesindedir; IR/CFG tabanli optimizer yoktur.
 - Debug info uretilmez.
 
 ## Sonraki Hedefler

@@ -2,8 +2,10 @@ pub mod ast;
 pub mod diagnostics;
 pub mod error;
 pub mod interpreter;
+pub mod ir;
 pub mod lexer;
 pub mod native;
+pub mod optimizer;
 pub mod parser;
 pub mod sema;
 pub mod token;
@@ -11,7 +13,9 @@ pub mod typed;
 
 use diagnostics::{format_lex_error, format_parse_error, format_semantic_error, Diagnostic};
 use interpreter::Interpreter;
+use ir::{format_ir, lower_typed_program};
 use lexer::Lexer;
+use optimizer::optimize_typed_program;
 use parser::Parser;
 use sema::Analyzer;
 
@@ -29,7 +33,9 @@ pub fn parse_source(source: &str) -> Result<ast::Program, String> {
 
 pub fn compile_source(source: &str) -> Result<typed::TypedProgram, String> {
     let program = parse_source(source)?;
-    Analyzer::analyze(&program).map_err(|error| format_semantic_error(source, &error))
+    Analyzer::analyze(&program)
+        .map(optimize_typed_program)
+        .map_err(|error| format_semantic_error(source, &error))
 }
 
 pub fn check_source(source: &str) -> Result<(), Diagnostic> {
@@ -52,7 +58,9 @@ fn compile_source_diagnostic(source: &str) -> Result<typed::TypedProgram, Diagno
         .parse_program()
         .map_err(|error| Diagnostic::from_parse_error(&error))?;
 
-    Analyzer::analyze(&program).map_err(|error| Diagnostic::from_semantic_error(&error))
+    Analyzer::analyze(&program)
+        .map(optimize_typed_program)
+        .map_err(|error| Diagnostic::from_semantic_error(&error))
 }
 
 pub fn run_source(source: &str) -> Result<String, String> {
@@ -63,6 +71,11 @@ pub fn run_source(source: &str) -> Result<String, String> {
 pub fn emit_native_asm_source(source: &str) -> Result<String, String> {
     let program = compile_source(source)?;
     native::emit_windows_x64_asm(&program)
+}
+
+pub fn emit_ir_source(source: &str) -> Result<String, String> {
+    let program = compile_source(source)?;
+    Ok(format_ir(&lower_typed_program(&program)))
 }
 
 #[cfg(test)]

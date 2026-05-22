@@ -81,6 +81,7 @@ pub struct TypedVarDecl {
 pub struct TypedAssignStmt {
     pub span: SourceSpan,
     pub target: TypedLocalRef,
+    pub index: Option<Box<TypedExpr>>,
     pub value: TypedExpr,
 }
 
@@ -126,7 +127,12 @@ pub enum TypedExprKind {
     Number(i64),
     Bool(bool),
     String(String),
+    Array(Vec<TypedExpr>),
     Variable(TypedLocalRef),
+    Index {
+        target: Box<TypedExpr>,
+        index: Box<TypedExpr>,
+    },
     Call {
         target: CallTarget,
         args: Vec<TypedExpr>,
@@ -154,12 +160,14 @@ pub enum CallTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinFunction {
     Yazdir,
+    Uzunluk,
 }
 
 impl BuiltinFunction {
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "yazdır" | "yazdir" => Some(Self::Yazdir),
+            "uzunluk" => Some(Self::Uzunluk),
             _ => None,
         }
     }
@@ -167,6 +175,7 @@ impl BuiltinFunction {
     pub fn return_type(self) -> Option<Type> {
         match self {
             BuiltinFunction::Yazdir => None,
+            BuiltinFunction::Uzunluk => Some(Type::Sayi),
         }
     }
 }

@@ -24,8 +24,10 @@ Yapilanlar:
 - Fonksiyon tanimlama ve fonksiyon cagirma
 - `Ana()` giris noktasi
 - `yazdır` yerlesik fonksiyonu (`yazdir` ASCII alias'i da desteklenir)
+- V0.2 branch'inde `uzunluk(metin) -> sayı` yerlesik fonksiyonu
+- V0.2 branch'inde `metin + metin` dinamik birlestirme MVP'si
 - `//` satir yorumlari
-- CLI komutlari: `calistir`, `yorumla`, `kontrol`, `ast`, `typed`, `asm`, `asm-yaz`, `derle`, `ide`, `ornekler`, `surum`, `yardim`
+- CLI komutlari: `calistir`, `yorumla`, `kontrol`, `ast`, `typed`, `ir`, `asm`, `asm-yaz`, `derle`, `ide`, `ornekler`, `surum`, `yardim`
 - Etkilesimli REPL komutu: `repl`
 
 Bu CLI yuzeyi V0.1 icin sabit kabul edilir.
@@ -33,7 +35,7 @@ Bu CLI yuzeyi V0.1 icin sabit kabul edilir.
 Henuz yapilmayanlar:
 
 - Dizi, struct, class, modul sistemi
-- Heap allocation, dinamik metin, referans sayma
+- Otomatik referans sayma cleanup'i
 
 ## Indir ve Kullan
 
@@ -149,6 +151,12 @@ Semantic analizden sonraki typed AST'yi yazdirma:
 
 ```powershell
 cargo run -- typed examples\topla.ana
+```
+
+V0.2 ara temsilini yazdirma:
+
+```powershell
+cargo run -- ir examples\topla.ana
 ```
 
 Windows x64 assembly uretme:
@@ -310,6 +318,20 @@ Ana() {
 }
 ```
 
+### V0.2 Metin Ornegi
+
+```ana
+Selamla(ad: metin) -> metin {
+    dön "Merhaba " + ad;
+}
+
+Ana() {
+    mesaj: metin = Selamla("Anadil");
+    yazdir(mesaj);
+    yazdir(uzunluk(mesaj));
+}
+```
+
 ## Gelistirme
 
 ### Mimari
@@ -352,8 +374,23 @@ Desteklenenler:
 - `kir`, `devam`, `don`
 - Fonksiyon tanimlama ve fonksiyon cagirma
 - `yazdır` (`yazdir` alias'i desteklenir)
+- `uzunluk(metin) -> sayı`
 - `yazdir`, metin karsilastirma ve runtime hata cikislari ayri Anadil runtime kutuphanesi uzerinden linklenir.
 - Runtime kutuphanesi `target/native-runtime/anadil_runtime.lib` olarak cache'lenir ve `runtime/anadil_runtime.asm` timestamp'iyle invalidate edilir.
+- Typed AST optimizer sabit katlama ve basit cebirsel sadelestirme uygular.
+- `anadil ir` V0.2 ara temsilinde runtime operasyonlarini `runtime.yazdir_metin` ve `runtime.metin_esit` gibi acik isimlerle gosterir.
+- Static `metin` literal'lari native assembly'de length-prefixed Anadil metin nesnesi olarak emit edilir.
+- `metin + metin`, runtime heap allocation ile yeni length-prefixed metin uretir.
+- `uzunluk(metin)` native backend'de `anadil_runtime_metin_uzunluk` helper'ina dusurulur.
+- Nested `metin + metin` ve user-defined fonksiyon return operandlari concat sonrasi temizlenir.
+- `yazdir` icindeki owned `metin` temporary'leri ve kullanilmayan owned expression sonuclari temizlenir.
+- Void fonksiyonlardaki ust seviye `metin` local'leri icin temel `birak` cleanup'i emit edilir.
+- Literal/concat RHS ile `metin` yeniden atamalarinda eski deger temel cleanup ile birakilir.
+- Local `metin` paylasiminda `paylas` emit edilir.
+- User-defined fonksiyonlara local `metin` argumani gecirilirken `paylas` emit edilir.
+- Local `metin` return degerleri cleanup sonrasi caller'a canli doner.
+- If/else branch'lerinin normal cikisinda branch-scope `metin` local cleanup'i vardir.
+- Loop body `metin` local'leri normal tur sonu, `kır` ve `devam` akislarinda temizlenir.
 - Native cikti dogrulugu su an interpreter oracle'i kullanan ornek programlar ve edge-case testleriyle korunur.
 
 Sinirlar:
@@ -364,6 +401,9 @@ Sinirlar:
 - Runtime helper'lari `GetStdHandle`, `WriteFile`, `ReadFile` ve `ExitProcess` kullanir; `printf`, `getchar`, `strcmp` veya C `exit` cagrisi yoktur.
 - Link satirinda Anadil runtime library ve `kernel32.lib` disinda CRT kutuphanesi yoktur.
 - Ilk 4 fonksiyon parametresi register ile, sonraki parametreler stack uzerinden tasinir.
+- Dinamik `metin` allocation simdilik `metin + metin` ile sinirlidir; otomatik `birak` emit'i fonksiyon cikisi, if/loop scope cikisi ve owned/static RHS assignment replacement icin kademeli olarak vardir.
+- Return ownership simdilik local `metin` ve owned concat return degerleriyle sinirlidir.
+- RC emit henuz last-use ve tum kompleks ownership optimizasyonlarini kapsayan tam bir model degildir.
 - Runtime hatalari interpreter kadar ayrintili raporlanmaz.
 - Sifira bolme native executable icinde kontrollu hata ve process exit code `1` ile raporlanir.
 - Native executable program sonunda ve runtime hata cikisinda terminalin kapanmamasi icin Enter bekler.

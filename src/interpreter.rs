@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::fmt;
+use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 use crate::ast::{BinaryOp, SourceSpan};
 use crate::typed::{
@@ -42,7 +41,7 @@ enum Value {
     Number(i64),
     Bool(bool),
     String(String),
-    Array(Vec<Value>),
+    Array(Rc<RefCell<Vec<Value>>>),
 }
 
 impl Value {
@@ -54,6 +53,7 @@ impl Value {
             Value::String(value) => value.clone(),
             Value::Array(values) => {
                 let rendered = values
+                    .borrow()
                     .iter()
                     .map(Value::render)
                     .collect::<Vec<_>>()
@@ -283,7 +283,7 @@ impl<'a> Interpreter<'a> {
                 for element in elements {
                     values.push(self.eval_value(element)?);
                 }
-                Ok(Some(Value::Array(values)))
+                Ok(Some(Value::Array(Rc::new(RefCell::new(values)))))
             }
             TypedExprKind::Variable(local) => self.lookup(&local.name).map(Some).ok_or_else(|| {
                 RuntimeError::at(expr.span, format!("Degisken bulunamadi: `{}`", local.name))
@@ -303,9 +303,8 @@ impl<'a> Interpreter<'a> {
                 if index < 0 {
                     return Err(RuntimeError::at(expr.span, "Dizi index'i negatif olamaz"));
                 }
-                values
-                    .get(index as usize)
-                    .cloned()
+                let value = values.borrow().get(index as usize).cloned();
+                value
                     .map(Some)
                     .ok_or_else(|| RuntimeError::at(expr.span, "Dizi index'i aralik disinda"))
             }
@@ -356,7 +355,7 @@ impl<'a> Interpreter<'a> {
                     .ok_or_else(|| RuntimeError::at(span, "`uzunluk` bir arguman bekler"))?;
                 match value {
                     Value::String(value) => Ok(Some(Value::Number(value.len() as i64))),
-                    Value::Array(values) => Ok(Some(Value::Number(values.len() as i64))),
+                    Value::Array(values) => Ok(Some(Value::Number(values.borrow().len() as i64))),
                     _ => Err(RuntimeError::at(
                         span,
                         "`uzunluk` argumani calisma zamaninda metin veya dizi olmali",
@@ -460,6 +459,7 @@ impl<'a> Interpreter<'a> {
                 if index < 0 {
                     return Some(Err(RuntimeError::at(span, "Dizi index'i negatif olamaz")));
                 }
+                let mut values = values.borrow_mut();
                 let Some(slot) = values.get_mut(index as usize) else {
                     return Some(Err(RuntimeError::at(span, "Dizi index'i aralik disinda")));
                 };

@@ -472,6 +472,73 @@ Ana() {\n\
 }
 
 #[test]
+fn native_array_local_sharing_matches_interpreter() {
+    assert_native_output(
+        "array_local_sharing",
+        "\
+Ana() {\n\
+    a: dizi = {1, \"iki\"};\n\
+    b: dizi = a;\n\
+    b[0] = \"bir\";\n\
+    yazdir(a[0]);\n\
+    yazdir(b[1]);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_array_parameter_matches_interpreter() {
+    assert_native_output(
+        "array_parameter",
+        "\
+YazdirIlk(degerler: dizi) {\n\
+    yazdir(uzunluk(degerler));\n\
+    yazdir(degerler[0]);\n\
+}\n\
+\n\
+Ana() {\n\
+    degerler: dizi = {\"bir\", 2};\n\
+    YazdirIlk(degerler);\n\
+    yazdir(degerler[1]);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_array_return_matches_interpreter() {
+    assert_native_output(
+        "array_return",
+        "\
+Uret() -> dizi {\n\
+    d\u{00f6}n {1, \"iki\", do\u{011f}ru};\n\
+}\n\
+\n\
+Ana() {\n\
+    degerler: dizi = Uret();\n\
+    yazdir(uzunluk(degerler));\n\
+    yazdir(degerler[0]);\n\
+    yazdir(degerler[1]);\n\
+    yazdir(degerler[2]);\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_nested_array_assignment_matches_interpreter() {
+    assert_native_output(
+        "array_nested_assignment",
+        "\
+Ana() {\n\
+    degerler: dizi = {1, 2};\n\
+    degerler[0] = {\"ic\", 7};\n\
+    yazdir(uzunluk(degerler));\n\
+    degerler[0] = \"degisti\";\n\
+    yazdir(degerler[0]);\n\
+}\n",
+    );
+}
+
+#[test]
 fn native_build_handles_spaces_and_turkish_paths() {
     let Some(anadil_bin) = anadil_binary() else {
         eprintln!("native path case skipped: anadil binary path is not available");

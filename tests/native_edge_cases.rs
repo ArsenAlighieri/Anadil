@@ -445,6 +445,33 @@ Ana() {\n\
 }
 
 #[test]
+fn native_empty_array_literal_matches_interpreter() {
+    assert_native_output(
+        "array_empty_literal",
+        "\
+Ana() {\n\
+    bos: dizi = {};\n\
+    yazdir(uzunluk(bos));\n\
+}\n",
+    );
+}
+
+#[test]
+fn native_array_string_overwrite_matches_interpreter() {
+    assert_native_output(
+        "array_string_overwrite",
+        "\
+Ana() {\n\
+    degerler: dizi = {\"eski\" + \"!\", \"iki\"};\n\
+    yazdir(degerler[0]);\n\
+    degerler[0] = \"yeni\" + \"!\";\n\
+    yazdir(degerler[0]);\n\
+    yazdir(degerler[1]);\n\
+}\n",
+    );
+}
+
+#[test]
 fn native_build_handles_spaces_and_turkish_paths() {
     let Some(anadil_bin) = anadil_binary() else {
         eprintln!("native path case skipped: anadil binary path is not available");
@@ -590,6 +617,102 @@ Ana() {\n\
     assert!(
         !run_output.status.success(),
         "native executable should fail for array_index_out_of_range"
+    );
+
+    let combined_output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+    assert!(combined_output.contains("Anadil runtime hatasi: Dizi index'i aralik disinda"));
+}
+
+#[test]
+fn native_array_negative_index_reports_runtime_error() {
+    let Some(anadil_bin) = anadil_binary() else {
+        eprintln!("native edge case skipped: anadil binary path is not available");
+        return;
+    };
+
+    let source = "\
+Ana() {\n\
+    degerler: dizi = {1, 2, 3};\n\
+    indeks: say\u{0131} = -1;\n\
+    yazdir(degerler[indeks]);\n\
+}\n";
+
+    let interpreter_error = run_source(source).expect_err("interpreter should reject bad index");
+    assert!(interpreter_error.contains("negatif"));
+
+    let compile_output = compile_source_with_native(&anadil_bin, "array_negative_index", source);
+    if !compile_output.status.success() && native_toolchain_missing(&compile_output) {
+        eprintln!("native edge case skipped: Visual Studio native toolchain is not available");
+        return;
+    }
+
+    assert!(
+        compile_output.status.success(),
+        "native compile failed for array_negative_index\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&compile_output.stdout),
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let exe_path = edge_case_path("array_negative_index").with_extension("exe");
+    let run_output = Command::new(&exe_path)
+        .output()
+        .expect("native executable should run");
+
+    assert!(
+        !run_output.status.success(),
+        "native executable should fail for array_negative_index"
+    );
+
+    let combined_output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+    assert!(combined_output.contains("Anadil runtime hatasi: Dizi index'i aralik disinda"));
+}
+
+#[test]
+fn native_array_assignment_out_of_range_reports_runtime_error() {
+    let Some(anadil_bin) = anadil_binary() else {
+        eprintln!("native edge case skipped: anadil binary path is not available");
+        return;
+    };
+
+    let source = "\
+Ana() {\n\
+    degerler: dizi = {1, 2};\n\
+    degerler[2] = \"uc\";\n\
+}\n";
+
+    let interpreter_error = run_source(source).expect_err("interpreter should reject bad index");
+    assert!(interpreter_error.contains("aralik"));
+
+    let compile_output =
+        compile_source_with_native(&anadil_bin, "array_assignment_out_of_range", source);
+    if !compile_output.status.success() && native_toolchain_missing(&compile_output) {
+        eprintln!("native edge case skipped: Visual Studio native toolchain is not available");
+        return;
+    }
+
+    assert!(
+        compile_output.status.success(),
+        "native compile failed for array_assignment_out_of_range\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&compile_output.stdout),
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let exe_path = edge_case_path("array_assignment_out_of_range").with_extension("exe");
+    let run_output = Command::new(&exe_path)
+        .output()
+        .expect("native executable should run");
+
+    assert!(
+        !run_output.status.success(),
+        "native executable should fail for array_assignment_out_of_range"
     );
 
     let combined_output = format!(
